@@ -1,5 +1,4 @@
-# Projet-Odoo
-<<<<<<< HEAD
+# Happy Cactus
 
 - Développeurs : Loig Bouin, Nino Hamel
 - Ressources Humaines : Vianney Lefranc
@@ -15,8 +14,6 @@
 - Frontend géré dans le fichier main.py
 
 ---
-
-HAPPY CACTUS
 
 # Projet ODOO - Planning (style LUP visuel)
 
