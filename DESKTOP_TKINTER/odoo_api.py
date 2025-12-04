@@ -43,13 +43,13 @@ class OdooClient:
         data = self.search_read('res.company', ['name', 'email', 'phone', 'vat'], limit=1)
         return data[0] if data else {}
  
-    def get_products(self, limit=20):
+    def get_products(self, limit=8096):
         """Récupère une liste de produits avec image"""
         return self.search_read('product.product', 
                               ['name', 'list_price', 'qty_available', 'image_1920'], 
                               limit=limit)
 
-    def get_manufacturing_orders(self, states_filter=None, limit=20):
+    def get_manufacturing_orders(self, states_filter=None, limit=100):
         """Récupère la liste des ordres de fabrication"""
         domain = []
         if states_filter:
@@ -57,4 +57,29 @@ class OdooClient:
 
         return self.search_read('mrp.production', 
                                 ['name', 'product_id', 'product_qty', 'state'], 
-                                domain=domain, limit=limit)
+                                domain=domain, limit=8069)
+    
+    def update_production_qty(self, mo_id, new_qty, target_qty):
+        """
+        Met à jour la quantité et valide l'OF si la quantité cible est atteinte.
+        mo_id: ID de l'Ordre de Fabrication
+        new_qty: La quantité saisie par l'utilisateur
+        target_qty: La quantité totale à produire
+        """
+        try:
+            # 1. On écrit la nouvelle quantité produite
+            # Odoo passera automatiquement en "Progress" si new_qty > 0
+            self.models.execute_kw(self.db, self.uid, self.password,
+                                 'mrp.production', 'write',
+                                 [[mo_id], {'qty_producing': float(new_qty)}])
+            # 2. Si on a tout produit (ou plus), on valide l'OF (Action 'Mark as Done')
+            if float(new_qty) >= float(target_qty):
+                self.models.execute_kw(self.db, self.uid, self.password,
+                                     'mrp.production', 'button_mark_done',
+                                     [[mo_id]])
+                return "DONE" # Pour dire au front que c'est fini
+            return "UPDATED"
+        except Exception as e:
+            print(f"Erreur Update OF: {e}")
+            raise e
+        

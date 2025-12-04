@@ -26,19 +26,31 @@ class ModernOdooApp(tk.Tk):
         self.geometry("900x600")
         self.configure(bg=THEME["bg_main"])
  
-        # Instanciation du backend
+        # --- POINT CRITIQUE 1 : La Racine ---
+        # On dit à la fenêtre principale : "La cellule (0,0) doit prendre 100% de la place disponible"
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+ 
+        # Instanciation de l'API
         self.api = OdooClient("http://localhost:8069", "demo")
  
-        # Conteneur des pages
+        # --- POINT CRITIQUE 2 : Le Conteneur ---
         self.container = tk.Frame(self, bg=THEME["bg_main"])
-        self.container.pack(fill="both", expand=True)
+        # sticky="nsew" force le cadre à coller aux 4 bords (North, South, East, West)
+        self.container.grid(row=0, column=0, sticky="nsew")
+        # On dit au conteneur : "La vue qui est dedans doit aussi prendre 100% de la place"
+        self.container.grid_rowconfigure(0, weight=1)
+        self.container.grid_columnconfigure(0, weight=1)
  
         self.frames = {}
         # Création des vues
+        # Assure-toi que ManufacturingView est bien dans la liste !
         for F in (LoginView, MenuView, CompanyView, ProductView, ManufacturingView):
             page_name = F.__name__
             frame = F(parent=self.container, controller=self)
             self.frames[page_name] = frame
+            # --- POINT CRITIQUE 3 : Les Vues ---
+            # Chaque vue doit s'étirer pour remplir le conteneur
             frame.grid(row=0, column=0, sticky="nsew")
  
         self.show_frame("LoginView")
@@ -165,6 +177,8 @@ class ProductView(DarkFrame):
         self.lbl_img.pack(pady=10)
         self.lbl_price = tk.Label(self.detail_area, text="", font=("Arial", 16), bg=THEME["bg_main"], fg=THEME["fg_text"])
         self.lbl_price.pack()
+        self.lbl_qty = tk.Label(self.detail_area, text="", font=("Arial", 14), bg=THEME["bg_main"], fg=THEME["fg_text"])
+        self.lbl_qty.pack()
  
         self.products_cache = {}
  
@@ -183,6 +197,7 @@ class ProductView(DarkFrame):
         data = self.products_cache[sel[0]]
         self.lbl_name.config(text=data['name'])
         self.lbl_price.config(text=f"{data['list_price']} €")
+        self.lbl_qty.config(text=f"En stock : {data['qty_available']}")
         img_b64 = data.get('image_1920')
         if img_b64:
             img_data = base64.b64decode(img_b64)
@@ -194,89 +209,178 @@ class ProductView(DarkFrame):
         else:
             self.lbl_img.config(image="", text="Pas d'image", fg="grey")
 
-# --- VUE 5 : ORDRES DE FABRICATION ---
+# --- VUE 5 : FABRICATION (ÉDITION) ---
 class ManufacturingView(DarkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
-        # Header
+        # 1. Header
         h = tk.Frame(self, bg=THEME["bg_sec"], height=50)
         h.pack(fill="x")
         tk.Button(h, text="< RETOUR", command=lambda: self.controller.show_frame("MenuView"),
                   bg=THEME["btn_bg"], fg=THEME["btn_fg"], relief="flat").pack(side="left", padx=10, pady=10)
-        tk.Label(h, text="Ordres de Fabrication", bg=THEME["bg_sec"], fg=THEME["fg_text"], 
-                 font=("Arial", 12, "bold")).pack(side="left", padx=20)
+        tk.Label(h, text="Pilotage Fabrication", bg=THEME["bg_sec"], fg=THEME["fg_text"], font=("Arial", 12, "bold")).pack(side="left", padx=20)
  
-        # Zone de Filtres
-        filter_frame = tk.Frame(self, bg=THEME["bg_main"], pady=10)
-        filter_frame.pack(fill="x", padx=20)
+        # 2. Split Screen (PanedWindow)
+        self.paned = tk.PanedWindow(self, orient=tk.HORIZONTAL, bg=THEME["bg_main"], sashwidth=4, sashrelief="flat")
+        self.paned.pack(fill="both", expand=True, padx=10, pady=10)
+ 
+        # --- ZONE GAUCHE : LISTE ---
+        left_frame = tk.Frame(self.paned, bg=THEME["bg_sec"])
 
-        self.filter_vars = {}  # Dictionnaire pour stocker l'état (True/False) de chaque case
-        states_to_filter = [
-            ("confirmed", "Confirmé"),
-            ("progress", "En cours"),
-            ("done", "Fait"),
-            ("cancel", "Annulé")
-        ]
-
-        # Liste des OF
-        self.listbox = Listbox(self, bg=THEME["bg_sec"], fg=THEME["fg_text"], 
-                               font=("Courier", 10), # Police à chasse fixe pour aligner un peu mieux
-                               selectbackground=THEME["fg_sub"], relief="flat", highlightthickness=0)
-        self.listbox.pack(fill="both", expand=True, padx=20, pady=20)
-
+        # === AJOUTER CE BLOC POUR LES FILTRES ===
+        filter_frame = tk.Frame(left_frame, bg=THEME["bg_sec"], pady=5)
+        filter_frame.pack(fill="x") # En haut de la colonne gauche
+ 
+        self.filter_vars = {} 
+        states_to_filter = [("confirmed", "Conf."), ("progress", "En cours"), ("done", "Fait"), ("cancel", "Annulé")]
  
         for tech_name, label in states_to_filter:
-            # Par défaut, on coche tout sauf "Annulé" et "Fait" pour ne pas polluer (au choix)
+            # On coche par défaut confirmed et progress
             is_checked = True if tech_name in ["confirmed", "progress"] else False
             var = tk.BooleanVar(value=is_checked)
             self.filter_vars[tech_name] = var
-            # On crée la checkbox# command=self.on_show -> Dès qu'on clique, ça recharge la liste !
+            # command=self.refresh_list pour recharger dès qu'on clique
             cb = tk.Checkbutton(filter_frame, text=label, variable=var, 
-                                bg=THEME["bg_main"], fg=THEME["fg_text"], 
-                                selectcolor=THEME["bg_sec"], activebackground=THEME["bg_main"],
+                                bg=THEME["bg_sec"], fg=THEME["fg_text"], 
+                                selectcolor=THEME["bg_main"], activebackground=THEME["bg_sec"],
                                 activeforeground=THEME["fg_sub"],
-                                command=self.on_show) 
-            cb.pack(side="left", padx=10)
+                                command=self.refresh_list) 
+            cb.pack(side="left", padx=5)
+# ========================================
 
-        # Liste
-        self.listbox = Listbox(self, bg=THEME["bg_sec"], fg=THEME["fg_text"], 
+        # Scrollbar
+        scrollbar = tk.Scrollbar(left_frame)
+        scrollbar.pack(side="right", fill="y")
+        self.listbox = Listbox(left_frame, width=40, bg=THEME["bg_sec"], fg=THEME["fg_text"], 
                                font=("Courier", 10), selectbackground=THEME["fg_sub"], 
-                               relief="flat", highlightthickness=0)
-        self.listbox.pack(fill="both", expand=True, padx=20, pady=20)
+                               relief="flat", highlightthickness=0, yscrollcommand=scrollbar.set)
+        self.listbox.pack(side="left", fill="both", expand=True)
+        self.listbox.bind('<<ListboxSelect>>', self.load_detail)
+        scrollbar.config(command=self.listbox.yview)
+ 
+        self.paned.add(left_frame, minsize=300)
+ 
+        # --- ZONE DROITE : ACTIONS ---
+        self.action_area = tk.Frame(self.paned, bg=THEME["bg_main"], padx=20, pady=20)
+        self.paned.add(self.action_area, minsize=300, stretch="always")
+ 
+        # Widgets de la zone de droite (initialement cachés ou vides)
+        self.lbl_title = tk.Label(self.action_area, text="", font=("Segoe UI", 18, "bold"), bg=THEME["bg_main"], fg=THEME["fg_sub"])
+        self.lbl_title.pack(pady=10)
+ 
+        self.lbl_status = tk.Label(self.action_area, text="", font=("Arial", 12, "italic"), bg=THEME["bg_main"], fg="grey")
+        self.lbl_status.pack(pady=5)
+ 
+        # Frame pour la saisie
+        self.input_frame = tk.Frame(self.action_area, bg=THEME["bg_main"], pady=20)
+        self.input_frame.pack()
+ 
+        tk.Label(self.input_frame, text="Quantité Produite :", bg=THEME["bg_main"], fg=THEME["fg_text"]).grid(row=0, column=0)
+        self.entry_qty = tk.Entry(self.input_frame, font=("Arial", 14), width=8, justify="center")
+        self.entry_qty.grid(row=0, column=1, padx=10)
+        self.lbl_target = tk.Label(self.input_frame, text="/ ???", font=("Arial", 14), bg=THEME["bg_main"], fg=THEME["fg_text"])
+        self.lbl_target.grid(row=0, column=2)
+ 
+        # Bouton Valider
+        self.btn_save = tk.Button(self.action_area, text="ENREGISTRER PRODUCTION", 
+                                  command=self.save_production,
+                                  bg=THEME["btn_bg"], fg=THEME["btn_fg"], font=("Arial", 12, "bold"), padx=20, pady=10)
+        self.btn_save.pack(pady=20)
+ 
+        self.current_order = None # Pour stocker l'objet sélectionné
+        self.orders_cache = {}
  
     def on_show(self):
+        self.refresh_list()
+ 
+    def refresh_list(self):
         self.listbox.delete(0, tk.END)
-
-        # 1. On construit la liste des états cochés
+        self.orders_cache = {}
+        self.current_order = None
+        self.hide_input_area()
+ 
+        # 1. On récupère les filtres actifs
         selected_states = []
         for state_key, var in self.filter_vars.items():
-            if var.get(): # Si la case est cochée (True)
+            if var.get():
                 selected_states.append(state_key)
-        # Si rien n'est coché, on n'affiche rien (ou tout, selon ta préférence)
+        # Petite sécurité : si rien n'est coché, on n'appelle pas l'API
         if not selected_states:
-            self.listbox.insert(0, "Veuillez sélectionner au moins un statut.")
+            self.listbox.insert(0, "Aucun filtre sélectionné.")
             return
-        # 2. Appel API avec le filtre
+ 
+        # 2. Appel API AVEC le paramètre states_filter
         try:
             orders = self.controller.api.get_manufacturing_orders(states_filter=selected_states)
-
             if not orders:
-                self.listbox.insert(0, "Aucun ordre trouvé pour ces filtres.")
+                self.listbox.insert(0, "Aucun ordre trouvé.")
                 return
-
+ 
             for order in orders:
-                # Traitement des données Odoo
+                idx = self.listbox.size()
                 ref = order['name']
                 state = order['state']
-                qty = order.get('product_qty', 0)
-                product_name = order['product_id'][1] if order['product_id'] else "Inconnu"
-
-                line = f"[{state.upper()}] {ref} - {product_name} (Qté: {qty})"
-                self.listbox.insert(tk.END, line)
-
+                # Rappel : assure-toi d'avoir ajouté 'qty_producing' dans odoo_api.py !
+                done = order.get('qty_producing', 0) 
+                product = order['product_id'][1]
+                line = f"[{state.upper()}] {ref} - {product}"
+                self.listbox.insert(idx, line)
+                order['qty_producing_current'] = done
+                self.orders_cache[idx] = order
         except Exception as e:
-            self.listbox.insert(0, f"Erreur API: {e}")
+            print(f"Erreur refresh : {e}")
+            self.listbox.insert(0, "Erreur de chargement")
+ 
+    def load_detail(self, event):
+        sel = self.listbox.curselection()
+        if not sel: return
+        data = self.orders_cache[sel[0]]
+        self.current_order = data # Stockage de l'OF en cours
+ 
+        # Mise à jour UI
+        self.lbl_title.config(text=f"{data['name']} - {data['product_id'][1]}")
+        status_map = {'confirmed': 'Confirmé', 'progress': 'En cours', 'done': 'Terminé', 'cancel': 'Annulé', 'draft': 'Brouillon'}
+        state_label = status_map.get(data['state'], data['state'])
+        self.lbl_status.config(text=f"État actuel : {state_label}")
+        # Logique d'affichage selon l'état
+        if data['state'] in ['confirmed', 'progress']:
+            self.input_frame.pack()
+            self.btn_save.pack(pady=20)
+            self.btn_save.config(state="normal", bg=THEME["btn_bg"])
+            # Remplissage champs
+            self.entry_qty.delete(0, tk.END)
+            # On affiche la quantité en cours (qty_producing)
+            current_prod = data.get('qty_producing_current', 0)
+            self.entry_qty.insert(0, str(current_prod))
+            self.lbl_target.config(text=f"/ {data['product_qty']}")
+        else:
+            # Si c'est déjà fini ou annulé, on empêche la modif
+            self.hide_input_area()
+            self.lbl_status.config(text=f"Cet ordre est {state_label}. Modification impossible.")
+ 
+    def hide_input_area(self):
+        self.input_frame.pack_forget()
+        self.btn_save.pack_forget()
+ 
+    def save_production(self):
+        if not self.current_order: return
+        try:
+            new_qty = float(self.entry_qty.get())
+            target_qty = self.current_order['product_qty']
+            mo_id = self.current_order['id'] # L'ID technique Odoo
+            # Appel API
+            result = self.controller.api.update_production_qty(mo_id, new_qty, target_qty)
+            if result == "DONE":
+                messagebox.showinfo("Succès", "Quantité atteinte ! L'OF est passé à 'FAIT'.")
+            else:
+                messagebox.showinfo("Succès", "Quantité mise à jour. L'OF est 'EN COURS'.")
+            # On rafraichit la liste pour voir le nouvel état
+            self.refresh_list()
+        except ValueError:
+            messagebox.showerror("Erreur", "Veuillez entrer un nombre valide.")
+        except Exception as e:
+            messagebox.showerror("Erreur Odoo", str(e))
  
 if __name__ == "__main__":
     app = ModernOdooApp()
