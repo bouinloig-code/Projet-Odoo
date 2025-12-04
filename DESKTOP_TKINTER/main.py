@@ -207,12 +207,6 @@ class ManufacturingView(DarkFrame):
         tk.Label(h, text="Ordres de Fabrication", bg=THEME["bg_sec"], fg=THEME["fg_text"], 
                  font=("Arial", 12, "bold")).pack(side="left", padx=20)
  
-        # Liste des OF
-        self.listbox = Listbox(self, bg=THEME["bg_sec"], fg=THEME["fg_text"], 
-                               font=("Courier", 10), # Police à chasse fixe pour aligner un peu mieux
-                               selectbackground=THEME["fg_sub"], relief="flat", highlightthickness=0)
-        self.listbox.pack(fill="both", expand=True, padx=20, pady=20)
-
         # Zone de Filtres
         filter_frame = tk.Frame(self, bg=THEME["bg_main"], pady=10)
         filter_frame.pack(fill="x", padx=20)
@@ -224,6 +218,13 @@ class ManufacturingView(DarkFrame):
             ("done", "Fait"),
             ("cancel", "Annulé")
         ]
+
+        # Liste des OF
+        self.listbox = Listbox(self, bg=THEME["bg_sec"], fg=THEME["fg_text"], 
+                               font=("Courier", 10), # Police à chasse fixe pour aligner un peu mieux
+                               selectbackground=THEME["fg_sub"], relief="flat", highlightthickness=0)
+        self.listbox.pack(fill="both", expand=True, padx=20, pady=20)
+
  
         for tech_name, label in states_to_filter:
             # Par défaut, on coche tout sauf "Annulé" et "Fait" pour ne pas polluer (au choix)
