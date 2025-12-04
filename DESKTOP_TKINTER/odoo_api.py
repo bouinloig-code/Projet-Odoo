@@ -48,3 +48,13 @@ class OdooClient:
         return self.search_read('product.product', 
                               ['name', 'list_price', 'qty_available', 'image_1920'], 
                               limit=limit)
+
+    def get_manufacturing_orders(self, states_filter=None, limit=20):
+        """Récupère la liste des ordres de fabrication"""
+        domain = []
+        if states_filter:
+            domain = [['state', 'in', states_filter]]
+
+        return self.search_read('mrp.production', 
+                                ['name', 'product_id', 'product_qty', 'state'], 
+                                domain=domain, limit=limit)

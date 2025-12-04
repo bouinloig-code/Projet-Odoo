@@ -35,7 +35,7 @@ class ModernOdooApp(tk.Tk):
  
         self.frames = {}
         # Création des vues
-        for F in (LoginView, MenuView, CompanyView, ProductView):
+        for F in (LoginView, MenuView, CompanyView, ProductView, ManufacturingView):
             page_name = F.__name__
             frame = F(parent=self.container, controller=self)
             self.frames[page_name] = frame
@@ -66,8 +66,8 @@ class LoginView(DarkFrame):
         tk.Label(box, text="CONNEXION", font=("Segoe UI", 18, "bold"), 
                  bg=THEME["bg_sec"], fg=THEME["fg_text"]).pack(pady=20)
  
-        self.entry_user = self.create_input(box, "admin")
-        self.entry_pass = self.create_input(box, "admin", is_pass=True)
+        self.entry_user = self.create_input(box, "prod")
+        self.entry_pass = self.create_input(box, "prod", is_pass=True)
  
         btn = tk.Button(box, text="ACCÉDER", command=self.attempt_login,
                         bg=THEME["btn_bg"], fg=THEME["btn_fg"], font=("Arial", 10, "bold"),
@@ -100,6 +100,7 @@ class MenuView(DarkFrame):
  
         self.create_tile(tile_area, "🏢 SOCIÉTÉ", "CompanyView", 0, 0)
         self.create_tile(tile_area, "📦 PRODUITS", "ProductView", 0, 1)
+        self.create_tile(tile_area, "🏭 FABRICATION", "ManufacturingView", 1, 0)
         tk.Button(self, text="Déconnexion", command=lambda: controller.show_frame("LoginView"),
                   bg=THEME["bg_sec"], fg="red", relief="flat").pack(pady=50)
  
@@ -192,6 +193,89 @@ class ProductView(DarkFrame):
             self.lbl_img.image = tk_img
         else:
             self.lbl_img.config(image="", text="Pas d'image", fg="grey")
+
+# --- VUE 5 : ORDRES DE FABRICATION ---
+class ManufacturingView(DarkFrame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+        # Header
+        h = tk.Frame(self, bg=THEME["bg_sec"], height=50)
+        h.pack(fill="x")
+        tk.Button(h, text="< RETOUR", command=lambda: self.controller.show_frame("MenuView"),
+                  bg=THEME["btn_bg"], fg=THEME["btn_fg"], relief="flat").pack(side="left", padx=10, pady=10)
+        tk.Label(h, text="Ordres de Fabrication", bg=THEME["bg_sec"], fg=THEME["fg_text"], 
+                 font=("Arial", 12, "bold")).pack(side="left", padx=20)
+ 
+        # Liste des OF
+        self.listbox = Listbox(self, bg=THEME["bg_sec"], fg=THEME["fg_text"], 
+                               font=("Courier", 10), # Police à chasse fixe pour aligner un peu mieux
+                               selectbackground=THEME["fg_sub"], relief="flat", highlightthickness=0)
+        self.listbox.pack(fill="both", expand=True, padx=20, pady=20)
+
+        # Zone de Filtres
+        filter_frame = tk.Frame(self, bg=THEME["bg_main"], pady=10)
+        filter_frame.pack(fill="x", padx=20)
+
+        self.filter_vars = {}  # Dictionnaire pour stocker l'état (True/False) de chaque case
+        states_to_filter = [
+            ("confirmed", "Confirmé"),
+            ("progress", "En cours"),
+            ("done", "Fait"),
+            ("cancel", "Annulé")
+        ]
+ 
+        for tech_name, label in states_to_filter:
+            # Par défaut, on coche tout sauf "Annulé" et "Fait" pour ne pas polluer (au choix)
+            is_checked = True if tech_name in ["confirmed", "progress"] else False
+            var = tk.BooleanVar(value=is_checked)
+            self.filter_vars[tech_name] = var
+            # On crée la checkbox# command=self.on_show -> Dès qu'on clique, ça recharge la liste !
+            cb = tk.Checkbutton(filter_frame, text=label, variable=var, 
+                                bg=THEME["bg_main"], fg=THEME["fg_text"], 
+                                selectcolor=THEME["bg_sec"], activebackground=THEME["bg_main"],
+                                activeforeground=THEME["fg_sub"],
+                                command=self.on_show) 
+            cb.pack(side="left", padx=10)
+
+        # Liste
+        self.listbox = Listbox(self, bg=THEME["bg_sec"], fg=THEME["fg_text"], 
+                               font=("Courier", 10), selectbackground=THEME["fg_sub"], 
+                               relief="flat", highlightthickness=0)
+        self.listbox.pack(fill="both", expand=True, padx=20, pady=20)
+ 
+    def on_show(self):
+        self.listbox.delete(0, tk.END)
+
+        # 1. On construit la liste des états cochés
+        selected_states = []
+        for state_key, var in self.filter_vars.items():
+            if var.get(): # Si la case est cochée (True)
+                selected_states.append(state_key)
+        # Si rien n'est coché, on n'affiche rien (ou tout, selon ta préférence)
+        if not selected_states:
+            self.listbox.insert(0, "Veuillez sélectionner au moins un statut.")
+            return
+        # 2. Appel API avec le filtre
+        try:
+            orders = self.controller.api.get_manufacturing_orders(states_filter=selected_states)
+
+            if not orders:
+                self.listbox.insert(0, "Aucun ordre trouvé pour ces filtres.")
+                return
+
+            for order in orders:
+                # Traitement des données Odoo
+                ref = order['name']
+                state = order['state']
+                qty = order.get('product_qty', 0)
+                product_name = order['product_id'][1] if order['product_id'] else "Inconnu"
+
+                line = f"[{state.upper()}] {ref} - {product_name} (Qté: {qty})"
+                self.listbox.insert(tk.END, line)
+
+        except Exception as e:
+            self.listbox.insert(0, f"Erreur API: {e}")
  
 if __name__ == "__main__":
     app = ModernOdooApp()
