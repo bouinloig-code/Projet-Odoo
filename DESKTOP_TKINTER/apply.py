@@ -20,8 +20,6 @@ class App(tk.Tk):
         self.attributes('-alpha', 0.9) #window transparency
         # self.iconbitmap(Path("image/logo.png"))
         self.title("Happy Cactus")
-        self.iconbitmap(Path("image/logo.xbm"))
-        self.title("Desktop GUI")
 #====================================================================
  
 if __name__ == "__main__":
