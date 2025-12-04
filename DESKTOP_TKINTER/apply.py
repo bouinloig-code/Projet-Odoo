@@ -18,8 +18,13 @@ class App(tk.Tk):
         self.minsize(100, 100)
         self.maxsize(self.winfo_screenwidth(), self.winfo_screenheight())
         self.attributes('-alpha', 0.9) #window transparency
+<<<<<<< HEAD
         # self.iconbitmap(Path("image/logo.png"))
         self.title("Happy Cactus")
+=======
+        self.iconbitmap(Path("image/logo.xbm"))
+        self.title("Desktop GUI")
+>>>>>>> 48c740e08713c9830c4b0fd4b184fd948fd01962
 #====================================================================
  
 if __name__ == "__main__":
