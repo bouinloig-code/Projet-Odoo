@@ -1,5 +1,5 @@
 # Projet-Odoo
-ERP Odoo
+HAPPY CACTUS
 
 # Projet ODOO - Planning (style LUP visuel)
 
