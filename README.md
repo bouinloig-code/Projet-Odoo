@@ -1,8 +1,8 @@
 # Projet-Odoo
 <<<<<<< HEAD
 
-Développeurs : Loig Bouin, Nino Hamel
-Ressources Humaines : Vianney Lefranc
+- Développeurs : Loig Bouin, Nino Hamel
+- Ressources Humaines : Vianney Lefranc
 
 ## Sites de référence
 
@@ -13,7 +13,9 @@ Ressources Humaines : Vianney Lefranc
 
 - Backend géré dans le fichier odoo.api.py
 - Frontend géré dans le fichier main.py
-=======
+
+---
+
 HAPPY CACTUS
 
 # Projet ODOO - Planning (style LUP visuel)
