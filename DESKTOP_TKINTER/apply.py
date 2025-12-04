@@ -1,127 +1,134 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, Listbox, Scrollbar
 import xmlrpc.client
+import base64
+import io
+from PIL import Image, ImageTk # C'est ici qu'on utilise Pillow
  
-class OdooViewerApp:
+class OdooProductShop:
     def __init__(self, root):
         self.root = root
-        self.root.title("Visualiseur Odoo - Ma Société")
-        self.root.geometry("500x500")
+        self.root.title("Gestion Stock Odoo")
+        self.root.geometry("800x500")
  
-        # --- Variables de session ---
+        # Config Odoo (Mets tes infos ici)
+        self.url = "http://localhost:8069"
+        self.db = "demo"      # Ton nom de base
+        self.username = "bouin.loig@gmail.com"
+        self.password = "MSIR5"
         self.uid = None
-        self.models_proxy = None # Ce sera notre accès aux données
+        self.models = None
+        self.products_data = {} # Pour stocker temporairement les infos
  
-        # --- Config par défaut ---
-        self.default_url = "http://localhost:8069"
-        self.default_db = "odoo" # Mets ici ton nom de BDD corrigé
-        self.default_user = "admin"
-        self.default_pass = "admin"
+        self.setup_ui()
+        self.connect_and_load()
  
-        self.create_login_widgets()
-        self.create_data_widgets()
+    def setup_ui(self):
+        # --- Zone Gauche : Liste des produits ---
+        self.frame_list = tk.Frame(self.root, width=250, bg="#e1e1e1")
+        self.frame_list.pack(side="left", fill="y")
  
-    def create_login_widgets(self):
-        # Frame de connexion
-        self.frm_login = tk.LabelFrame(self.root, text="Connexion", padx=10, pady=10)
-        self.frm_login.pack(padx=10, pady=10, fill="x")
+        self.lbl_list = tk.Label(self.frame_list, text="Mes Produits", bg="#e1e1e1", font=("Arial", 12, "bold"))
+        self.lbl_list.pack(pady=10)
  
-        # Inputs simples
-        tk.Label(self.frm_login, text="URL:").grid(row=0, column=0, sticky="e")
-        self.entry_url = tk.Entry(self.frm_login)
-        self.entry_url.insert(0, self.default_url)
-        self.entry_url.grid(row=0, column=1, sticky="ew")
+        self.listbox = Listbox(self.frame_list, width=30)
+        self.listbox.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+        self.listbox.bind('<<ListboxSelect>>', self.on_select_product) # Événement clic
  
-        tk.Label(self.frm_login, text="DB:").grid(row=1, column=0, sticky="e")
-        self.entry_db = tk.Entry(self.frm_login)
-        self.entry_db.insert(0, self.default_db)
-        self.entry_db.grid(row=1, column=1, sticky="ew")
+        # --- Zone Droite : Détails ---
+        self.frame_detail = tk.Frame(self.root, bg="white")
+        self.frame_detail.pack(side="right", fill="both", expand=True)
  
-        tk.Label(self.frm_login, text="User:").grid(row=2, column=0, sticky="e")
-        self.entry_user = tk.Entry(self.frm_login)
-        self.entry_user.insert(0, self.default_user)
-        self.entry_user.grid(row=2, column=1, sticky="ew")
+        self.lbl_title = tk.Label(self.frame_detail, text="Sélectionnez un produit", font=("Arial", 18, "bold"), bg="white")
+        self.lbl_title.pack(pady=20)
  
-        tk.Label(self.frm_login, text="Pass:").grid(row=3, column=0, sticky="e")
-        self.entry_pass = tk.Entry(self.frm_login, show="*")
-        self.entry_pass.insert(0, self.default_pass)
-        self.entry_pass.grid(row=3, column=1, sticky="ew")
+        # Placeholder pour l'image
+        self.lbl_image = tk.Label(self.frame_detail, bg="white")
+        self.lbl_image.pack(pady=10)
  
-        tk.Button(self.frm_login, text="Connexion", command=self.connect_odoo).grid(row=4, column=0, columnspan=2, pady=10)
+        self.lbl_price = tk.Label(self.frame_detail, text="", font=("Arial", 14), bg="white")
+        self.lbl_price.pack(pady=5)
  
-    def create_data_widgets(self):
-        # Frame pour afficher les données (cachée au début)
-        self.frm_data = tk.LabelFrame(self.root, text="Fiche Entreprise (res.company)", padx=10, pady=10)
-        # On prépare les labels où on injectera le texte
-        self.lbl_name = tk.Label(self.frm_data, text="---", font=("Arial", 14, "bold"))
-        self.lbl_name.pack(pady=5)
+        self.lbl_stock = tk.Label(self.frame_detail, text="", font=("Arial", 14), fg="blue", bg="white")
+        self.lbl_stock.pack(pady=5)
  
-        self.lbl_email = tk.Label(self.frm_data, text="Email: ---")
-        self.lbl_email.pack(anchor="w")
- 
-        self.lbl_phone = tk.Label(self.frm_data, text="Tel: ---")
-        self.lbl_phone.pack(anchor="w")
- 
-        self.lbl_currency = tk.Label(self.frm_data, text="Devise: ---")
-        self.lbl_currency.pack(anchor="w")
- 
-    def connect_odoo(self):
-        url = self.entry_url.get()
-        self.db = self.entry_db.get() # On stocke db et pass car on en aura besoin pour chaque requête
-        self.password = self.entry_pass.get()
-        username = self.entry_user.get()
- 
+    def connect_and_load(self):
         try:
-            # 1. Authentification (Endpoint COMMON)
-            common = xmlrpc.client.ServerProxy(f'{url}/xmlrpc/2/common')
-            self.uid = common.authenticate(self.db, username, self.password, {})
+            # 1. Connexion
+            common = xmlrpc.client.ServerProxy(f'{self.url}/xmlrpc/2/common')
+            self.uid = common.authenticate(self.db, self.username, self.password, {})
+            if not self.uid:
+                messagebox.showerror("Erreur", "Connexion refusée")
+                return
  
-            if self.uid:
-                messagebox.showinfo("Succès", f"Connecté ! UID: {self.uid}")
-                # 2. Préparation pour les données (Endpoint OBJECT)
-                self.models_proxy = xmlrpc.client.ServerProxy(f'{url}/xmlrpc/2/object')
-                # 3. On lance la récupération des infos
-                self.fetch_company_info()
-            else:
-                messagebox.showerror("Erreur", "Mauvais identifiants")
+            self.models = xmlrpc.client.ServerProxy(f'{self.url}/xmlrpc/2/object')
+            self.load_products()
  
         except Exception as e:
-            messagebox.showerror("Erreur", str(e))
+            messagebox.showerror("Erreur Connection", str(e))
  
-    def fetch_company_info(self):
-        # C'est ici que la magie opère
+    def load_products(self):
         try:
-            # On cherche dans le modèle 'res.company'
-            # execute_kw(db, uid, password, model, method, query)
-            # search_read est une méthode puissante : elle cherche ET lit les données en une fois
-            # [[], ...] -> La liste vide signifie "Tous les enregistrements" (pas de filtre)
-            # {'limit': 1} -> On en prend juste un (le premier, c'est souvent la boite principale)
-            fields_to_get = ['name', 'email', 'phone', 'currency_id']
-            companies = self.models_proxy.execute_kw(
+            # 2. Récupération des produits
+            # On demande l'image en petite taille (image_128) pour aller plus vite
+            fields = ['name', 'list_price', 'qty_available', 'image_1920'] 
+            # On cherche tous les produits (domain=[])
+            products = self.models.execute_kw(
                 self.db, self.uid, self.password,
-                'res.company', 'search_read',
+                'product.product', 'search_read',
                 [[]], 
-                {'fields': fields_to_get, 'limit': 1}
+                {'fields': fields, 'limit': 20} # Limite à 20 pour le test
             )
  
-            if companies:
-                data = companies[0] # On prend le premier dictionnaire de la liste
-                print(f"Données reçues d'Odoo : {data}") # Regarde ta console pour voir le format brut !
- 
-                # Mise à jour de l'IHM
-                self.frm_data.pack(padx=10, pady=10, fill="both", expand=True) # On affiche le panneau
-                self.lbl_name.config(text=data.get('name', 'Inconnu'))
-                self.lbl_email.config(text=f"Email: {data.get('email', 'N/A')}")
-                self.lbl_phone.config(text=f"Tel: {data.get('phone', 'N/A')}")
-                # currency_id est spécial : Odoo renvoie souvent [id, "Nom"] (ex: [1, "EUR"])
-                currency = data.get('currency_id')
-                currency_text = currency[1] if currency else "N/A"
-                self.lbl_currency.config(text=f"Devise: {currency_text}")
+            # On remplit la Listbox
+            for prod in products:
+                # On stocke l'objet complet dans un dico avec l'index de la liste comme clé
+                index = self.listbox.size()
+                self.listbox.insert(index, prod['name'])
+                self.products_data[index] = prod
  
         except Exception as e:
-            messagebox.showerror("Erreur lecture", str(e))
+            messagebox.showerror("Erreur Lecture", str(e))
+ 
+    def on_select_product(self, event):
+        # Récupération de l'index cliqué
+        selection = self.listbox.curselection()
+        if not selection:
+            return
+ 
+        index = selection[0]
+        data = self.products_data[index]
+ 
+        # Mise à jour des textes
+        self.lbl_title.config(text=data['name'])
+        self.lbl_price.config(text=f"Prix : {data['list_price']} €")
+        self.lbl_stock.config(text=f"En stock : {data['qty_available']} unités")
+ 
+        # Mise à jour de l'image
+        self.display_image(data.get('image_1920'))
+ 
+    def display_image(self, base64_string):
+        if not base64_string:
+            self.lbl_image.config(image='', text="(Pas d'image)")
+            return
+ 
+        try:
+            # 1. Décodage du Base64 (Texte -> Binaire)
+            img_data = base64.b64decode(base64_string)
+            # 2. Ouverture avec Pillow (Binaire -> Image Object)
+            img = Image.open(io.BytesIO(img_data))
+            # 3. Redimensionnement pour que ça rentre dans l'écran
+            img.thumbnail((250, 250)) 
+            # 4. Conversion pour Tkinter
+            tk_image = ImageTk.PhotoImage(img)
+            # 5. Affichage
+            self.lbl_image.config(image=tk_image, text="")
+            self.lbl_image.image = tk_image # Important : garder une référence sinon le Garbage Collector l'efface !
+        except Exception as e:
+            print(f"Erreur image: {e}")
+            self.lbl_image.config(image='', text="(Erreur chargement image)")
  
 if __name__ == "__main__":
     root = tk.Tk()
-    app = OdooViewerApp(root)
+    app = OdooProductShop(root)
     root.mainloop()
