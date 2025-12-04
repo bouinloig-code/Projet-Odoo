@@ -33,4 +33,3 @@
 | Jour 2 | 15h30–16h30   | 🔵 **Création des schémas d’architecture** | 1h   | NH / LV | 🟢 Faible  | ❌ 0%      |
 | Jour 2 | 15h30–16h30   | 🔵 **Rapport de test + captures**       | 1h    | LV / LB | 🟠 Moyen   | ❌ 0%      |
 | Jour 2 | 16h30–17h30   | 🟠 **Finalisation, relecture, derniers commits** | 2h | Groupe | 🔴 Élevé   | ⏳ 50%     |
->>>>>>> ca20fd2cec73890b5408376b818716913c583ae4
