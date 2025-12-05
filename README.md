@@ -6,7 +6,7 @@
 ## Sites de référence
 
 - Gemini
-- C'est tout
+- Les cactés de Saint-Jeanu (cactus26.com)
 
 ## Structure du projet
 
